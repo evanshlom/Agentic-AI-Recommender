@@ -40,32 +40,32 @@ class HeteroGNN(nn.Module):
         # First heterogeneous convolution layer
         self.conv1 = HeteroConv({
             ('product', 'similar_to', 'product'): GATConv(
-                hidden_dim, hidden_dim, heads=num_heads, concat=False
+                hidden_dim, hidden_dim, heads=num_heads, concat=False, add_self_loops=True
             ),
             ('product', 'belongs_to', 'category'): GATConv(
-                hidden_dim, hidden_dim, heads=num_heads, concat=False
+                hidden_dim, hidden_dim, heads=num_heads, concat=False, add_self_loops=False
             ),
             ('product', 'has_style', 'style'): GATConv(
-                hidden_dim, hidden_dim, heads=num_heads, concat=False
+                hidden_dim, hidden_dim, heads=num_heads, concat=False, add_self_loops=False
             ),
             ('user', 'prefers', 'product'): GATConv(
-                hidden_dim, hidden_dim, heads=num_heads, concat=False
+                hidden_dim, hidden_dim, heads=num_heads, concat=False, add_self_loops=False
             ),
             ('user', 'viewed', 'product'): GATConv(
-                hidden_dim, hidden_dim, heads=num_heads, concat=False
+                hidden_dim, hidden_dim, heads=num_heads, concat=False, add_self_loops=False
             ),
         }, aggr='mean')
 
         # Second heterogeneous convolution layer
         self.conv2 = HeteroConv({
             ('product', 'similar_to', 'product'): GATConv(
-                hidden_dim, out_dim, heads=1, concat=False
+                hidden_dim, out_dim, heads=1, concat=False, add_self_loops=True
             ),
             ('product', 'belongs_to', 'category'): GATConv(
-                hidden_dim, out_dim, heads=1, concat=False
+                hidden_dim, out_dim, heads=1, concat=False, add_self_loops=False
             ),
             ('user', 'prefers', 'product'): GATConv(
-                hidden_dim, out_dim, heads=1, concat=False
+                hidden_dim, out_dim, heads=1, concat=False, add_self_loops=False
             ),
         }, aggr='mean')
 

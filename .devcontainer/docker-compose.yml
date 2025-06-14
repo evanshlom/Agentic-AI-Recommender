@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspace:cached
+      - ~/.config/gh:/home/vscode/.config/gh:cached
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CUDA_VISIBLE_DEVICES=-1  # Disable GPU for PyTorch
+    command: sleep infinity
+    user: vscode
+    working_dir: /workspace
+    
+    # Create necessary files and directories on startup
+    entrypoint: >
+      bash -c "
+        # Create .env from example if it doesn't exist
+        if [ ! -f /workspace/.env ]; then
+          cp /workspace/.env.example /workspace/.env
+          echo 'Created .env file from .env.example'
+          echo 'Please update the ANTHROPIC_API_KEY in .env file'
+        fi
+        
+        # Create necessary directories
+        mkdir -p /workspace/logs
+        mkdir -p /workspace/data
+        
+        # Install additional dev dependencies
+        pip install --upgrade pip
+        pip install pytest-cov black ruff ipython
+        
+        # Keep container running
+        exec sleep infinity
+      "

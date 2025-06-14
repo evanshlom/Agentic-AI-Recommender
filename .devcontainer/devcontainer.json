@@ -1,0 +1,38 @@
+// .devcontainer/devcontainer.json
+{
+    "name": "Agentic Ecommerce Chatbot",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspace",
+    
+    // Use 'forwardPorts' to make a list of ports inside the container available locally
+    "forwardPorts": [8000],
+    
+    // Configure tool-specific properties
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.debugpy",
+                "charliermarsh.ruff",
+                "ms-azuretools.vscode-docker",
+                "GitHub.copilot",
+                "ms-toolsai.jupyter"
+            ],
+            "settings": {
+                "python.defaultInterpreter": "/usr/local/bin/python",
+                "python.linting.enabled": true,
+                "python.linting.pylintEnabled": true,
+                "python.formatting.provider": "black",
+                "python.testing.pytestEnabled": true,
+                "editor.formatOnSave": true,
+                "files.insertFinalNewline": true,
+                "files.trimTrailingWhitespace": true
+            }
+        }
+    },
+    
+    // Comment out to connect as root instead
+    "remoteUser": "vscode"
+}

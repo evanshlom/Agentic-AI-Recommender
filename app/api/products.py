@@ -10,6 +10,7 @@ router = APIRouter()
 @router.get("/", response_model=ProductListResponse)
 async def list_products(
     req: Request,
+    search: Optional[str] = Query(None, description="Search products by name or description"),
     category: Optional[str] = Query(None, description="Filter by category"),
     style: Optional[str] = Query(None, description="Filter by style"),
     min_price: Optional[float] = Query(None, description="Minimum price"),
@@ -18,9 +19,10 @@ async def list_products(
     brands: Optional[List[str]] = Query(None, description="Filter by brands"),
     min_rating: Optional[float] = Query(None, description="Minimum rating")
 ):
-    """Get all products with optional filters."""
+    """Get all products with optional filters and search."""
     try:
         graph_service = req.app.state.graph_service
+        chat_service = req.app.state.chat_service
         
         # Build filters
         filters = {}
@@ -38,13 +40,35 @@ async def list_products(
             filters["brands"] = brands
         if min_rating is not None:
             filters["min_rating"] = min_rating
+        if search:
+            filters["search"] = search
         
-        # Get products
+        # Get products with search/filtering
         products = graph_service.get_all_products(filters)
+        
+        # If search term provided, score products by relevance
+        if search:
+            # Score products using recommendation engine's similarity logic
+            scored_products = []
+            for product in products:
+                score = graph_service.calculate_search_relevance(product, search)
+                scored_products.append((product, score))
+            
+            # Sort by relevance score (highest first)
+            scored_products.sort(key=lambda x: x[1], reverse=True)
+            products = [product for product, score in scored_products]
         
         # Convert to API format
         product_list = []
-        for product in products:
+        for i, product in enumerate(products):
+            # Calculate score based on search relevance or default
+            if search:
+                score = graph_service.calculate_search_relevance(product, search)
+                reason = f"Matches '{search}'" if score > 0.5 else f"Related to '{search}'"
+            else:
+                score = 0.0
+                reason = "Available product"
+                
             product_list.append(ProductRecommendation(
                 product_id=product.id,
                 name=product.name,
@@ -54,8 +78,8 @@ async def list_products(
                 rating=product.rating,
                 colors=product.colors,
                 brand=product.brand,
-                score=0.0,
-                reason="Available product"
+                score=round(score, 3),
+                reason=reason
             ))
         
         return ProductListResponse(
@@ -86,7 +110,7 @@ async def get_product(product_id: str, req: Request):
             rating=product_node.rating,
             colors=product_node.colors,
             brand=product_node.brand,
-            score=0.0,
+            score=1.0,
             reason="Requested product"
         )
     except HTTPException:

@@ -1,6 +1,7 @@
 """Graph service for managing the ecommerce graph."""
 
 import json
+import re
 from typing import Dict, List, Optional, Any
 from app.models.graph_models import (
     EcommerceGraph, ProductNode, UserNode, GraphEdge,
@@ -235,6 +236,55 @@ class GraphService:
                 weight=weight
             ))
 
+    def calculate_search_relevance(self, product: ProductNode, search_term: str) -> float:
+        """Calculate how relevant a product is to a search term."""
+        if not search_term:
+            return 0.0
+            
+        search_lower = search_term.lower().strip()
+        score = 0.0
+        
+        # Exact name match (highest score)
+        if search_lower in product.name.lower():
+            if search_lower == product.name.lower():
+                score += 1.0  # Perfect match
+            else:
+                score += 0.8  # Partial match
+                
+        # Description match  
+        if hasattr(product, 'description') and product.description:
+            if search_lower in product.description.lower():
+                score += 0.6
+                
+        # Category match
+        if search_lower in product.category.lower():
+            score += 0.7
+            
+        # Style match
+        if search_lower in product.style.lower():
+            score += 0.5
+            
+        # Brand match
+        if search_lower in product.brand.lower():
+            score += 0.4
+            
+        # Color match
+        for color in product.colors:
+            if search_lower in color.lower():
+                score += 0.3
+                break
+                
+        # Word matching (split search term)
+        search_words = search_lower.split()
+        product_text = f"{product.name} {product.description if hasattr(product, 'description') else ''} {product.category} {product.style}".lower()
+        
+        for word in search_words:
+            if len(word) > 2 and word in product_text:
+                score += 0.2
+                
+        # Normalize score to [0, 1]
+        return min(score, 1.0)
+
     def get_or_create_user(self, session_id: str) -> UserNode:
         """Get or create a user node for a session."""
         user_id = f"user_{session_id}"
@@ -274,12 +324,12 @@ class GraphService:
         ))
 
     def get_all_products(self, filters: Optional[Dict[str, Any]] = None) -> List[ProductNode]:
-        """Get all products with optional filters."""
+        """Get all products with optional filters and search."""
         products = []
 
         for node in self.graph.nodes.values():
             if isinstance(node, ProductNode):
-                # Apply filters
+                # Apply traditional filters first
                 if filters:
                     if filters.get("category") and node.category != filters["category"]:
                         continue
@@ -296,8 +346,19 @@ class GraphService:
                             continue
                     if filters.get("brands") and node.brand not in filters["brands"]:
                         continue
+                
+                # Apply search filter
+                if filters and filters.get("search"):
+                    relevance = self.calculate_search_relevance(node, filters["search"])
+                    # Only include products with some relevance (score > 0)
+                    if relevance > 0:
+                        products.append(node)
+                else:
+                    products.append(node)
 
-                products.append(node)
+        # If search term provided, sort by relevance
+        if filters and filters.get("search"):
+            products.sort(key=lambda p: self.calculate_search_relevance(p, filters["search"]), reverse=True)
 
         return products
 

@@ -1,4 +1,3 @@
-# .devcontainer/Dockerfile
 FROM mcr.microsoft.com/devcontainers/python:1-3.10-bullseye
 
 # Install system dependencies
@@ -19,14 +18,16 @@ RUN if ! id -u vscode > /dev/null 2>&1; then \
 # Set working directory
 WORKDIR /workspace
 
+# Fix numpy compatibility issue first
+RUN pip install --upgrade pip && \
+    pip install "numpy<2.0"
+
 # Install PyTorch CPU version (to avoid GPU dependencies in container)
 RUN pip install torch==2.1.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
 
 # Copy requirements and install dependencies
-RUN pip install numpy<2.0
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --upgrade pip && \
-    pip install -r /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
 
 # Switch to vscode user
 USER vscode

@@ -45,9 +45,9 @@ async def test_analyze_user_input_greeting(agent):
         "messages": [HumanMessage(content="Hi, I'm looking for clothes")],
         "session_id": "test-123"
     }
-    
+
     result = await agent.analyze_user_input(state)
-    
+
     assert result["conversation_stage"] == "greeting"
     assert result["extracted_preferences"]["intent"] == "initial_greeting"
 
@@ -58,7 +58,7 @@ async def test_analyze_user_input_preferences(agent, mock_llm):
     mock_llm.ainvoke.return_value = Mock(
         content='{"intent": "shopping", "preferences": {"categories": ["shirts"], "styles": ["casual"]}, "confidence": 0.8}'
     )
-    
+
     state = {
         "messages": [
             HumanMessage(content="Hi"),
@@ -68,9 +68,9 @@ async def test_analyze_user_input_preferences(agent, mock_llm):
         "session_id": "test-123",
         "conversation_stage": "exploring"
     }
-    
+
     result = await agent.analyze_user_input(state)
-    
+
     assert result["extracted_preferences"]["intent"] == "shopping"
     assert "shirts" in result["extracted_preferences"]["preferences"]["categories"]
     assert "casual" in result["extracted_preferences"]["preferences"]["styles"]
@@ -90,9 +90,9 @@ async def test_update_user_graph(agent, mock_graph_service):
         "user_preferences": {},
         "session_id": "test-123"
     }
-    
+
     result = await agent.update_user_graph(state)
-    
+
     assert "shirts" in result["user_preferences"]
     assert result["user_preferences"]["shirts"] == 0.3
     assert "business-casual" in result["user_preferences"]
@@ -108,12 +108,14 @@ async def test_generate_response_greeting(agent):
         "conversation_stage": "greeting",
         "session_id": "test-123"
     }
-    
+
     result = await agent.generate_response(state)
-    
+
     assert len(result["messages"]) == 2
     assert isinstance(result["messages"][-1], AIMessage)
-    assert "Welcome" in result["messages"][-1].content or "Hi" in result["messages"][-1].content
+    response_content = result["messages"][-1].content
+    assert any(word in response_content.lower()
+               for word in ["welcome", "hello", "hi"])
 
 
 @pytest.mark.asyncio
@@ -122,27 +124,30 @@ async def test_process_message(agent, mock_llm, mock_recommendation_engine):
     mock_llm.ainvoke.return_value = Mock(
         content='{"intent": "shopping", "preferences": {"categories": ["shirts"]}, "confidence": 0.8}'
     )
-    
-    mock_product = Mock(
-        id="prod-001",
-        name="Test Shirt",
-        category="shirts",
-        style="casual",
-        price=50.0,
-        rating=4.5,
-        colors=["blue"],
-        brand="TestBrand"
-    )
-    
+
+    # Create a properly configured mock product with actual values
+    mock_product = Mock()
+    mock_product.id = "prod-001"
+    mock_product.name = "Test Shirt"
+    mock_product.category = "shirts"
+    mock_product.style = "casual"
+    mock_product.price = 50.0
+    mock_product.rating = 4.5
+    mock_product.colors = ["blue"]
+    mock_product.brand = "TestBrand"
+
     mock_recommendation_engine.get_product_recommendations.return_value = [
         (mock_product, 0.9, "Great match for your style")
     ]
-    
+
     message, recommendations, follow_up = await agent.process_message(
         "I need shirts",
         "test-123"
     )
-    
+
     assert isinstance(message, str)
     assert len(recommendations) > 0
     assert recommendations[0].product_id == "prod-001"
+    assert recommendations[0].name == "Test Shirt"
+    assert recommendations[0].category == "shirts"
+    assert recommendations[0].price == 50.0

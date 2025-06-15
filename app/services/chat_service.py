@@ -30,6 +30,9 @@ class ChatService:
             recommendation_engine=self.recommendation_engine
         )
         
+        # Give agent reference to chat service for history access
+        self.agent.chat_service = self
+        
         # Session storage (in-memory for demo)
         self.sessions: Dict[str, List[ChatMessage]] = {}
     
@@ -47,10 +50,11 @@ class ChatService:
         # Add new message to history
         history.append(ChatMessage(role="user", content=request.message))
         
-        # Process with agent
+        # Process with agent - now pass the full history
         response_text, recommendations, follow_up = await self.agent.process_message(
             message=request.message,
-            session_id=session_id
+            session_id=session_id,
+            conversation_history=history[:-1]  # All previous messages (exclude current)
         )
         
         # Add response to history

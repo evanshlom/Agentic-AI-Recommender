@@ -57,8 +57,12 @@ class EcommerceAgent:
 
         last_message = messages[-1]
 
-        # Check if this is the first message
-        if len(messages) == 1:
+        # Check if this is the first message in the entire conversation
+        # (not just the first in this state, but actually the first ever)
+        is_first_message = len(messages) == 1 and state.get(
+            "conversation_stage") == "greeting"
+
+        if is_first_message:
             state["conversation_stage"] = "greeting"
             state["extracted_preferences"] = {
                 "intent": "initial_greeting",
@@ -67,10 +71,17 @@ class EcommerceAgent:
             }
             return state
 
-        # Extract preferences using LLM
+        # Extract preferences using LLM - include conversation context
+        conversation_context = "\n".join(
+            [msg.content for msg in messages[-3:]])  # Last 3 messages for context
+
         prompt = ANALYZE_INPUT_PROMPT.format(
             message=last_message.content,
-            context=json.dumps(state.get("product_context", {}))
+            context=json.dumps({
+                "previous_conversation": conversation_context,
+                "existing_preferences": state.get("user_preferences", {}),
+                "product_context": state.get("product_context", {})
+            })
         )
 
         response = await self.llm.ainvoke(prompt)
@@ -88,8 +99,8 @@ class EcommerceAgent:
 
         state["extracted_preferences"] = extracted
 
-        # Update conversation stage
-        if state["conversation_stage"] == "greeting":
+        # Update conversation stage based on accumulated preferences
+        if state["conversation_stage"] == "greeting" and len(messages) > 1:
             state["conversation_stage"] = "exploring"
         elif len(state.get("user_preferences", {})) > 5:
             state["conversation_stage"] = "refining"
@@ -333,24 +344,37 @@ class EcommerceAgent:
     async def generate_response(self, state: AgentState) -> AgentState:
         """Generate the conversational response with recommendations."""
         stage = state.get("conversation_stage", "greeting")
+        messages = state.get("messages", [])
 
-        # Handle greeting specially
-        if stage == "greeting":
+        # Only use greeting for actual first message
+        is_actual_first_message = len(messages) == 1 and stage == "greeting"
+
+        if is_actual_first_message:
             response = random.choice(GREETING_VARIATIONS)
             state["messages"].append(AIMessage(content=response))
             state["follow_up_question"] = None
             return state
 
-        # Generate response based on recommendations
+        # Generate contextual response based on recommendations and conversation
         recommendations = state.get("recommendations", [])
         preferences = state.get("user_preferences", {})
 
-        # Create response prompt
+        # Create response prompt with conversation awareness
+        previous_context = ""
+        if len(messages) > 1:
+            # Include last user message for context
+            previous_context = f"User just said: '{messages[-1].content}'"
+
+            # Include preferences built up over conversation
+            if preferences:
+                previous_context += f"\nUser preferences so far: {json.dumps(preferences)}"
+
         prompt = GENERATE_RESPONSE_PROMPT.format(
             stage=stage,
             preferences=json.dumps(preferences),
             recommendations=json.dumps(
-                recommendations[:3])  # Top 3 for response
+                recommendations[:3]),  # Top 3 for response
+            context=previous_context
         )
 
         response = await self.llm.ainvoke(prompt)
@@ -360,7 +384,8 @@ class EcommerceAgent:
         follow_up_prompt = GENERATE_FOLLOW_UP_PROMPT.format(
             preferences=json.dumps(preferences),
             stage=stage,
-            message=state["messages"][-1].content if state["messages"] else ""
+            message=messages[-1].content if messages else "",
+            context=previous_context
         )
 
         follow_up_response = await self.llm.ainvoke(follow_up_prompt)
@@ -427,19 +452,48 @@ class EcommerceAgent:
             "price_range": {"min": None, "max": None}
         }
 
-    async def process_message(self, message: str, session_id: str) -> Tuple[str, List[ProductRecommendation], Optional[str]]:
+    async def process_message(self, message: str, session_id: str, conversation_history: Optional[List] = None) -> Tuple[str, List[ProductRecommendation], Optional[str]]:
         """Process a message and return response, recommendations, and follow-up."""
-        # Initialize state
+
+        # Get or create user node to load existing preferences
+        user_node = self.graph_service.get_or_create_user(session_id)
+
+        # Load existing user preferences from graph
+        existing_preferences = {}
+        if hasattr(user_node, 'preferences') and user_node.preferences:
+            existing_preferences = user_node.preferences.copy()
+
+        # Convert chat history to LangChain messages
+        messages = []
+        if conversation_history:
+            for chat_msg in conversation_history:
+                if chat_msg.role == "user":
+                    messages.append(HumanMessage(content=chat_msg.content))
+                else:
+                    messages.append(AIMessage(content=chat_msg.content))
+
+        # Add current message
+        messages.append(HumanMessage(content=message))
+
+        # Determine conversation stage based on history
+        if not conversation_history or len(conversation_history) == 0:
+            conversation_stage = "greeting"
+        elif len(existing_preferences) < 3:
+            conversation_stage = "exploring"
+        else:
+            conversation_stage = "refining"
+
+        # Initialize state with accumulated data
         state = {
-            "messages": [HumanMessage(content=message)],
+            "messages": messages,                          # ✅ Full conversation history
             "session_id": session_id,
-            "user_preferences": {},
+            "user_preferences": existing_preferences,      # ✅ Load saved preferences
             "extracted_preferences": {},
             "product_context": {},
             "recommendations": [],
             "graph_updates": [],
             "follow_up_question": None,
-            "conversation_stage": "greeting"
+            "conversation_stage": conversation_stage       # ✅ Proper stage based on history
         }
 
         # Run the workflow

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from app.models.api_models import ChatRequest, ChatResponse, ChatMessage, ErrorResponse
 from typing import List
+import traceback  # Add this import
 
 router = APIRouter()
 
@@ -15,6 +16,15 @@ async def chat(request: ChatRequest, req: Request):
         response = await chat_service.process_chat(request)
         return response
     except Exception as e:
+        # Print full traceback to console
+        print("="*50)
+        print("CHAT ENDPOINT ERROR:")
+        print("="*50)
+        print(f"Request: {request}")
+        print(f"Error: {str(e)}")
+        print("Full traceback:")
+        traceback.print_exc()
+        print("="*50)
         raise HTTPException(status_code=500, detail=str(e))
 
 

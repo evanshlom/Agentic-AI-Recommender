@@ -12,6 +12,7 @@ from rich.columns import Columns
 from rich import box
 from typing import Dict, Any, List
 from cli.client import ApiClient
+import httpx
 
 
 console = Console()
